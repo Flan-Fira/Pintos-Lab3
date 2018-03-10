@@ -141,7 +141,7 @@ process_execute(const char *cmdline)
     tid_t tid = thread_create(cmdline, PRI_DEFAULT, start_process, cmdline_copy);
   
     //put kernel to sleep the we can call the push_command
-    timer_msleep(10);
+    timer_msleep(30);
     // CMPS111 Lab 3 : The "parent" thread immediately returns after creating 
     // the child. To get ANY of the tests passing, you need to synchronise the 
     // activity of the parent and child threads.
