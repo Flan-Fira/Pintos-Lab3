@@ -56,7 +56,7 @@
 #include "userprog/syscall.h"
 #include "userprog/process.h"
 #include "devices/timer.h"
-
+#include "threads/semaphore.h"
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, void (**eip) (void), void **esp);
 
@@ -121,6 +121,12 @@ push_command(const char *cmdline UNUSED, void **esp)
  * returns.  Returns the new process's thread id, or TID_ERROR if the thread 
  * could not be created. 
  */
+struct Pair{
+
+    struct semaphore *spt;
+    char * cmdp;
+};
+
 tid_t
 process_execute(const char *cmdline)
 {
@@ -131,17 +137,23 @@ process_execute(const char *cmdline)
     
     strlcpy(cmdline_copy, cmdline, PGSIZE);
 
-
     //create a kernel thread for a new processs
+    struct Pair P;
 
     //new sruff to synchronize 
+    //create a semaphore
+    struct semaphore a;
 
+    P.spt=&a;
+    P.cmdp= cmdline_copy;
 
+    semaphore_init(&a,0);
     // Create a Kernel Thread for the new process
-    tid_t tid = thread_create(cmdline, PRI_DEFAULT, start_process, cmdline_copy);
+    tid_t tid = thread_create(cmdline, PRI_DEFAULT, start_process, &P);
+    semaphore_down(&a);
   
     //put kernel to sleep the we can call the push_command
-    timer_msleep(30);
+    
     // CMPS111 Lab 3 : The "parent" thread immediately returns after creating 
     // the child. To get ANY of the tests passing, you need to synchronise the 
     // activity of the parent and child threads.
@@ -157,9 +169,11 @@ process_execute(const char *cmdline)
  * If arguments are passed in CMDLINE, the thread will exit imediately.
  */
 static void
-start_process(void *cmdline)
+start_process(void *P)
 {
     // Initialize interrupt frame and load executable. 
+    struct Pair *cmd_sema = (struct Pair*)P;
+
     struct intr_frame pif;
     memset(&pif, 0, sizeof pif);
 
@@ -167,11 +181,12 @@ start_process(void *cmdline)
     pif.cs = SEL_UCSEG;
     pif.eflags = FLAG_IF | FLAG_MBS;
 
-    bool success = load(cmdline, &pif.eip, &pif.esp);
+    bool success = load(cmd_sema->cmdp,&pif.eip, &pif.esp);
     if (success) {
-        push_command(cmdline, &pif.esp);
+        push_command(cmd_sema->cmdp, &pif.esp);
+        semaphore_up(cmd_sema->spt);
     }
-    palloc_free_page(cmdline);
+    palloc_free_page(cmd_sema->cmdp);
 
     if (!success) {
         thread_exit();
