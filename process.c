@@ -67,7 +67,60 @@ static bool load(const char *cmdline, void (**eip) (void), void **esp);
  */
 static void
 push_command(const char *cmdline UNUSED, void **esp)
-{
+{   /*
+    char *arg [200];
+    int i=0;
+
+
+    while(buffer!=NULL){
+    buffer=strtok_r(NULL, " ", &save_p);
+    esp-=strlen(buffer)+1;
+
+    memcpy(esp,buffer,strlen(buffer)+2);
+    esp 
+    arg[n++]=esp;*/
+    *esp = (void*) ((unsigned int) (*esp) & 0xfffffffc);
+    printf('In push_command');
+    //count the argument
+    int pointer_size = 4;
+    int argcounter=0;
+    char *token;
+    *token=cmdline;
+    char *save_p;
+    int length;
+    void *Array_arg[200];
+
+    while ((token = strtok_r(token, " ", &save_p))){
+        printf("%s\n",token );
+        length = 1 + strlen(token);
+        *esp -= length;
+        memcpy(*esp, token, length);
+        Array_arg[argcounter]=*esp;
+        token=NULL;
+        argcounter++;
+ 
+    }
+    *esp = (void*) ((unsigned int) (*esp) & 0xfffffffc);
+    *esp -= pointer_size;
+    *((int*) *esp) = 0;
+    int i;
+
+    for(i=argcounter;i>=0;i--){
+        
+        *esp -= pointer_size;
+        *((void**) *esp)=Array_arg[i];
+
+    }
+        *esp -= pointer_size;
+        *((void**) *esp) = *esp + 4;
+        *esp -= pointer_size;
+        *((int*) *esp) = argcounter;
+        *esp -= pointer_size;
+        *((int*) *esp) = 0;
+
+}
+
+/*
     //word align const
     int pointer_size = 4;
    //get the command line size.
@@ -94,6 +147,7 @@ push_command(const char *cmdline UNUSED, void **esp)
   //set the address which is store the start address
     *((void**) *esp) = *esp + 4;
 	//go to the next bock
+    
     *esp -= pointer_size;
     //printf("Base Address: 0x%08x\n", (unsigned int) *esp);
 	//set the arg number=1
@@ -112,8 +166,10 @@ push_command(const char *cmdline UNUSED, void **esp)
     // to it, add a SINGLE LINE comment to each logical block, a comment that 
     // describes what you're doing, and why.
     //
+  
     // If nothing else, it'll remind you what you did when it doesn't work :)
-}
+    */
+
 
 /* 
  * Starts a new kernel thread running a user program loaded from CMDLINE. 
@@ -121,6 +177,7 @@ push_command(const char *cmdline UNUSED, void **esp)
  * returns.  Returns the new process's thread id, or TID_ERROR if the thread 
  * could not be created. 
  */
+//create a pair contain both sepahore and cmd pinter and pass it into start_process
 struct Pair{
 
     struct semaphore *spt;
@@ -137,21 +194,30 @@ process_execute(const char *cmdline)
     
     strlcpy(cmdline_copy, cmdline, PGSIZE);
 
-    //create a kernel thread for a new processs
+    //declare the Pair First 
     struct Pair P;
 
     //new sruff to synchronize 
-    //create a semaphore
+    //create a semaphore to keep parent and child thread synchronize
     struct semaphore a;
-
+    //pass the semaphore to the Pair.spt
     P.spt=&a;
+    //pass the cmdline to the P.cmdp
     P.cmdp= cmdline_copy;
-
+    //the real name of the first comand
+        char*r_name;
+    //a save pointer for strtok_r
+        char*save_p;
+    //get the real name
+        r_name=strtok_r(cmdline," ", &save_p);
+       
+//initialize a semaphore with value 0 in order to block the parent
     semaphore_init(&a,0);
-    // Create a Kernel Thread for the new process
-    tid_t tid = thread_create(cmdline, PRI_DEFAULT, start_process, &P);
+        // Create a Kernel Thread for the new process with the new parameter P and its real name
+    tid_t tid = thread_create(r_name, PRI_DEFAULT, start_process, &P);
+    //block the parent thread
     semaphore_down(&a);
-  
+  printf("*******%s\n", r_name );
     //put kernel to sleep the we can call the push_command
     
     // CMPS111 Lab 3 : The "parent" thread immediately returns after creating 
@@ -172,6 +238,7 @@ static void
 start_process(void *P)
 {
     // Initialize interrupt frame and load executable. 
+    //stract the Pair pointer to P
     struct Pair *cmd_sema = (struct Pair*)P;
 
     struct intr_frame pif;
@@ -181,9 +248,37 @@ start_process(void *P)
     pif.cs = SEL_UCSEG;
     pif.eflags = FLAG_IF | FLAG_MBS;
 
+//split the cmdline for load
+/*char *buffer=NULL;
+char *save_p=NULL;
+buffer=strtok_r(cmd_sema->cmdp," ",&save_p);*/
+
+//copy every string into the userstack and record it into an array
+//in order to use it in next step
+/*char *esp=(char *) pif.esp;
+//assume a char array with size less than 200
+char *arg [200];
+int i=0;
+//index for stack pointer 
+int n=0;
+
+while(buffer!=NULL){
+    buffer=strtok_r(NULL, " ", &save_p);
+    esp-=strlen(buffer)+1;
+
+    memcpy(esp,buffer,strlen(buffer)+2);
+    esp 
+    arg[n++]=esp;
+}*
+//word align
+*esp = (void*) ((unsigned int) (*esp) & 0xfffffffc);*/
+//load the comline from cmd_sema Pair
     bool success = load(cmd_sema->cmdp,&pif.eip, &pif.esp);
+    printf('success');
     if (success) {
+        printf('success is true');
         push_command(cmd_sema->cmdp, &pif.esp);
+        //after push, just up the semaphore let the parent thread exit
         semaphore_up(cmd_sema->spt);
     }
     palloc_free_page(cmd_sema->cmdp);
